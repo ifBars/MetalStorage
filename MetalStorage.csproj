@@ -5,12 +5,12 @@
 		<RootNamespace>MetalStorage</RootNamespace>
 		<LangVersion>default</LangVersion>
 		<NeutralLanguage>en-US</NeutralLanguage>
-		<Configurations>Mono;Il2cpp</Configurations>
+		<Configurations>Mono;Il2cpp;CrossCompat</Configurations>
 	</PropertyGroup>
 
 	<!-- Define paths for different configurations -->
 	<PropertyGroup Condition="'$(Configuration)'=='Mono'">
-		<GamePath>C:\Projects\s1\branches\Alternate Mono</GamePath>
+		<GamePath>D:\SteamLibrary\steamapps\common\Schedule I_alternate</GamePath>
 		<ManagedPath>$(GamePath)\Schedule I_Data\Managed</ManagedPath>
 		<MelonLoaderPath>$(GamePath)\MelonLoader\net35</MelonLoaderPath>
 		<ModsPath>$(GamePath)\Mods</ModsPath>
@@ -19,12 +19,21 @@
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)'=='Il2cpp'">
-		<GamePath>C:\Projects\s1\branches\Main ll2Cpp</GamePath>
+		<GamePath>D:\SteamLibrary\steamapps\common\Schedule I_public</GamePath>
 		<ManagedPath>$(GamePath)\MelonLoader\Il2CppAssemblies</ManagedPath>
 		<MelonLoaderPath>$(GamePath)\MelonLoader\net6</MelonLoaderPath>
 		<ModsPath>$(GamePath)\Mods</ModsPath>
 		<DefineConstants>IL2CPP</DefineConstants>
 		<AssemblyName>MetalStorage_Il2cpp</AssemblyName>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)'=='CrossCompat'">
+		<GamePath>D:\SteamLibrary\steamapps\common\Schedule I_alternate</GamePath>
+		<ManagedPath>$(GamePath)\Schedule I_Data\Managed</ManagedPath>
+		<MelonLoaderPath>$(GamePath)\MelonLoader\net35</MelonLoaderPath>
+		<ModsPath>$(GamePath)\Mods</ModsPath>
+		<DefineConstants>CROSS_COMPAT</DefineConstants>
+		<AssemblyName>MetalStorage</AssemblyName>
 	</PropertyGroup>
 
 	<PropertyGroup>
@@ -45,6 +54,52 @@
 
 	<!-- Mono references -->
 	<ItemGroup Condition="'$(Configuration)'=='Mono'">
+		<Reference Include="com.rlabrecque.steamworks.net">
+			<HintPath>$(ManagedPath)\com.rlabrecque.steamworks.net.dll</HintPath>
+		</Reference>
+		<Reference Include="FishNet.Runtime">
+			<HintPath>$(ManagedPath)\FishNet.Runtime.dll</HintPath>
+		</Reference>
+		<Reference Include="Newtonsoft.Json">
+			<HintPath>$(ManagedPath)\Newtonsoft.Json.dll</HintPath>
+		</Reference>
+		<Reference Include="Unity.TextMeshPro">
+			<HintPath>$(ManagedPath)\Unity.TextMeshPro.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.AssetBundleModule">
+			<HintPath>$(ManagedPath)\UnityEngine.AssetBundleModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.CoreModule">
+			<HintPath>$(ManagedPath)\UnityEngine.CoreModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.JSONSerializeModule">
+			<HintPath>$(ManagedPath)\UnityEngine.JSONSerializeModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.TextRenderingModule">
+			<HintPath>$(ManagedPath)\UnityEngine.TextRenderingModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.UI">
+			<HintPath>$(ManagedPath)\UnityEngine.UI.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.UIElementsModule">
+			<HintPath>$(ManagedPath)\UnityEngine.UIElementsModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.UIModule">
+			<HintPath>$(ManagedPath)\UnityEngine.UIModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.ImageConversionModule">
+			<HintPath>$(ManagedPath)\UnityEngine.ImageConversionModule.dll</HintPath>
+		</Reference>
+		<Reference Include="MelonLoader">
+			<HintPath>$(MelonLoaderPath)\MelonLoader.dll</HintPath>
+		</Reference>
+		<Reference Include="0Harmony">
+			<HintPath>$(MelonLoaderPath)\0Harmony.dll</HintPath>
+		</Reference>
+	</ItemGroup>
+
+	<!-- CrossCompat references (Mono without Assembly-CSharp) -->
+	<ItemGroup Condition="'$(Configuration)'=='CrossCompat'">
 		<Reference Include="com.rlabrecque.steamworks.net">
 			<HintPath>$(ManagedPath)\com.rlabrecque.steamworks.net.dll</HintPath>
 		</Reference>
@@ -143,13 +198,17 @@
 	<ItemGroup>
 	  <Compile Include="Core.cs" />
 	  <Compile Include="Features\MetalStorageRackCreator.cs" />
-	  <Compile Include="Integrations\HarmonyPatches.cs" />
 	  <Compile Include="Utils\Constants.cs" />
 	</ItemGroup>
 	<ItemGroup>
 	  <EmbeddedResource Include="Assets\MetalStorageRack_Small-Icon.png" />
 	  <EmbeddedResource Include="Assets\MetalStorageRack_1.5x0.5-Icon.png" />
 	  <EmbeddedResource Include="Assets\MetalStorageRack_Large-Icon.png" />
+	</ItemGroup>
+	<ItemGroup>
+	  <Reference Include="S1API">
+	    <HintPath>..\S1API\S1API\bin\MonoMelon\netstandard2.1\S1API.dll</HintPath>
+	  </Reference>
 	</ItemGroup>
 
 	<PropertyGroup>

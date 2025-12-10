@@ -1,13 +1,8 @@
-#if MONO
-using ScheduleOne.Persistence;
-#elif IL2CPP
-using Il2CppScheduleOne.Persistence;
-#endif
 using MelonLoader;
 using MetalStorage.Features;
 using MetalStorage.Utils;
+using S1API.Lifecycle;
 using System.Collections;
-using UnityEngine.Events;
 
 [assembly: MelonInfo(typeof(MetalStorage.Core), Constants.MOD_NAME, Constants.MOD_VERSION, Constants.MOD_AUTHOR)]
 [assembly: MelonGame(Constants.Game.GAME_STUDIO, Constants.Game.GAME_NAME)]
@@ -18,7 +13,6 @@ namespace MetalStorage
     {
         private bool _itemsInitialized;
         private bool _shopsInitialized;
-        private bool _preLoadHooked;
 
         private static MelonPreferences_Category _prefsCategory;
         private static MelonPreferences_Entry<int> _smallExtraSlots;
@@ -74,6 +68,9 @@ namespace MetalStorage
             ClampEntry(_smallPrice, 1, 10000);
             ClampEntry(_mediumPrice, 1, 10000);
             ClampEntry(_largePrice, 1, 10000);
+
+            // Register S1API lifecycle event for item creation
+            GameLifecycle.OnPreLoad += OnPreLoad;
         }
 
         private static void ClampEntry(MelonPreferences_Entry<int> entry, int min, int max)
@@ -84,16 +81,10 @@ namespace MetalStorage
 
         public override void OnSceneWasLoaded(int buildIndex, string sceneName)
         {
-            TryHookPreLoad();
-
             if (sceneName == "Main")
             {
-                if (!_itemsInitialized)
-                {
-                    MetalStorageRackCreator.CreateAllMetalRacks();
-                    _itemsInitialized = true;
-                }
-
+                // Items are now created via GameLifecycle.OnPreLoad event
+                // Just need to add to shops after a delay
                 if (!_shopsInitialized)
                 {
                     MelonCoroutines.Start(AddToShopsDelayed());
@@ -106,25 +97,11 @@ namespace MetalStorage
             }
         }
 
-        private void TryHookPreLoad()
-        {
-            if (_preLoadHooked) return;
-
-            var loadManager = LoadManager.Instance;
-            if (loadManager == null) return;
-
-#if IL2CPP
-            loadManager.onPreLoad.AddListener((UnityAction)OnPreLoad);
-#else
-            loadManager.onPreLoad.AddListener(new UnityAction(OnPreLoad));
-#endif
-            _preLoadHooked = true;
-        }
-
         private void OnPreLoad()
         {
             if (_itemsInitialized) return;
 
+            LoggerInstance.Msg("Creating metal storage racks...");
             MetalStorageRackCreator.CreateAllMetalRacks();
             _itemsInitialized = true;
         }
@@ -135,6 +112,7 @@ namespace MetalStorage
 
             if (_shopsInitialized) yield break;
 
+            LoggerInstance.Msg("Adding metal storage racks to shops...");
             MetalStorageRackCreator.AddToShops();
             _shopsInitialized = true;
         }

@@ -1,20 +1,12 @@
-#if MONO
-using ScheduleOne;
-using ScheduleOne.ItemFramework;
-using ScheduleOne.EntityFramework;
-using ScheduleOne.UI.Shop;
-#elif IL2CPP
-using Il2CppScheduleOne;
-using Il2CppScheduleOne.ItemFramework;
-using Il2CppScheduleOne.EntityFramework;
-using Il2CppScheduleOne.UI.Shop;
-#endif
 using MelonLoader;
 using MetalStorage.Utils;
+using S1API.Building;
+using S1API.Internal.Utils;
+using S1API.Items;
+using S1API.Rendering;
+using S1API.Shops;
+using S1API.Storage;
 using UnityEngine;
-using UnityEngine.Rendering;
-using System;
-using System.Collections.Generic;
 using System.Reflection;
 
 namespace MetalStorage.Features
@@ -25,14 +17,26 @@ namespace MetalStorage.Features
 
         public static readonly HashSet<string> MetalItemIds = new HashSet<string>();
         private static readonly Dictionary<string, Sprite> _loadedIcons = new Dictionary<string, Sprite>();
-        private static readonly List<StorableItemDefinition> _createdDefinitions = new List<StorableItemDefinition>();
 
         public static void CreateAllMetalRacks()
         {
             LoadIcons();
+
+            // Register BuildEvents for material customization (replaces Harmony patches)
+            BuildEvents.OnGridItemCreated += OnItemBuilt;
+            BuildEvents.OnSurfaceItemCreated += OnItemBuilt;
+            BuildEvents.OnBuildableItemInitialized += OnItemBuilt;
+
+            // Register StorageEvents for slot expansion (replaces Harmony patches)
+            StorageEvents.OnStorageCreated += OnStorageCreated;
+            StorageEvents.OnStorageLoading += OnStorageLoading;
+
+            // Create metal variants using S1API
             CreateMetalStorageRack(Constants.StorageRacks.SMALL, "Small Metal Storage Rack", Constants.ItemIds.SMALL, "MetalStorageRack_Small-Icon");
             CreateMetalStorageRack(Constants.StorageRacks.MEDIUM, "Medium Metal Storage Rack", Constants.ItemIds.MEDIUM, "MetalStorageRack_1.5x0.5-Icon");
             CreateMetalStorageRack(Constants.StorageRacks.LARGE, "Large Metal Storage Rack", Constants.ItemIds.LARGE, "MetalStorageRack_Large-Icon");
+
+            MelonLogger.Msg($"Created {MetalItemIds.Count} metal storage rack variants");
         }
 
         private static void LoadIcons()
@@ -47,189 +51,139 @@ namespace MetalStorage.Features
             foreach (var iconName in iconNames)
             {
                 string resourceName = $"MetalStorage.Assets.{iconName}.png";
-                try
+                var sprite = ImageUtils.LoadImageFromResource(assembly, resourceName);
+                if (sprite != null)
                 {
-                    using (var stream = assembly.GetManifestResourceStream(resourceName))
-                    {
-                        if (stream == null) continue;
-
-                        byte[] imageData = new byte[stream.Length];
-                        stream.Read(imageData, 0, imageData.Length);
-
-                        var texture = new Texture2D(2, 2);
-                        if (texture.LoadImage(imageData))
-                        {
-                            texture.filterMode = FilterMode.Bilinear;
-                            _loadedIcons[iconName] = Sprite.Create(
-                                texture,
-                                new Rect(0, 0, texture.width, texture.height),
-                                new Vector2(0.5f, 0.5f),
-                                100f
-                            );
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    MelonLogger.Warning($"Failed to load icon {iconName}: {ex.Message}");
+                    _loadedIcons[iconName] = sprite;
                 }
             }
         }
 
         private static void CreateMetalStorageRack(string originalId, string newName, string newId, string iconName)
         {
-            var originalDef = Registry.GetItem<BuildableItemDefinition>(originalId);
-            if (originalDef == null)
+            try
             {
-                MelonLogger.Error($"Could not find original storage rack: {originalId}");
-                return;
+                var icon = _loadedIcons.TryGetValue(iconName, out var sprite) ? sprite : null;
+                var price = Core.GetPrice(newId);
+
+                // Use S1API BuildableItemCreator with CloneFrom - eliminates manual property copying
+                var metalRack = BuildableItemCreator.CloneFrom(originalId)
+                    .WithBasicInfo(newId, newName, "A metal version of the storage rack. More industrial looking.")
+                    .WithIcon(icon)
+                    .WithPricing(price, 0.5f)
+                    .WithBuildSound(BuildSoundType.Metal)
+                    .WithLabelColor(Color.white)
+                    .Build();
+
+                MetalItemIds.Add(newId);
+                MelonLogger.Msg($"Created {newName} (ID: {newId})");
             }
-
-            var metalDef = ScriptableObject.CreateInstance<BuildableItemDefinition>();
-
-            metalDef.ID = newId;
-            metalDef.Name = newName;
-            metalDef.Description = $"A metal version of the {originalDef.Name.ToLower()}. More industrial looking.";
-            metalDef.Category = originalDef.Category;
-            metalDef.StackLimit = originalDef.StackLimit;
-            metalDef.Keywords = originalDef.Keywords;
-            metalDef.AvailableInDemo = originalDef.AvailableInDemo;
-            metalDef.UsableInFilters = originalDef.UsableInFilters;
-            metalDef.LabelDisplayColor = Color.white;
-            metalDef.Icon = _loadedIcons.TryGetValue(iconName, out var icon) ? icon : originalDef.Icon;
-
-            metalDef.BasePurchasePrice = Core.GetPrice(newId);
-            metalDef.ResellMultiplier = originalDef.ResellMultiplier;
-            metalDef.ShopCategories = originalDef.ShopCategories;
-            metalDef.RequiresLevelToPurchase = originalDef.RequiresLevelToPurchase;
-            metalDef.RequiredRank = originalDef.RequiredRank;
-            metalDef.legalStatus = originalDef.legalStatus;
-            metalDef.PickpocketDifficultyMultiplier = originalDef.PickpocketDifficultyMultiplier;
-            metalDef.CombatUtilityForNPCs = originalDef.CombatUtilityForNPCs;
-
-            metalDef.BuildSoundType = BuildableItemDefinition.EBuildSoundType.Metal;
-            metalDef.BuiltItem = originalDef.BuiltItem;
-            metalDef.StoredItem = originalDef.StoredItem;
-            metalDef.Equippable = originalDef.Equippable;
-
-            MetalItemIds.Add(newId);
-            _createdDefinitions.Add(metalDef);
-            Registry.Instance.AddToRegistry(metalDef);
+            catch (Exception ex)
+            {
+                MelonLogger.Error($"Failed to create metal storage rack '{newId}': {ex.Message}");
+            }
         }
 
         public static void AddToShops()
         {
-            foreach (var shop in ShopInterface.AllShops)
-            {
-                if (!ShopHasStorageRacks(shop)) continue;
+            int totalAdded = 0;
 
-                foreach (var metalDef in _createdDefinitions)
+            // Use S1API ShopManager to automatically add items to compatible shops
+            foreach (string itemId in MetalItemIds)
+            {
+                var item = ItemManager.GetItemDefinition(itemId);
+                if (item == null)
                 {
-                    if (ShopHasItem(shop, metalDef.ID)) continue;
-
-                    var listing = new ShopListing { Item = metalDef, name = metalDef.Name };
-                    shop.Listings.Add(listing);
-                    listing.Initialize(shop);
-                    CreateListingUI(shop, listing);
-                }
-            }
-        }
-
-        private static bool ShopHasStorageRacks(ShopInterface shop)
-        {
-            foreach (var listing in shop.Listings)
-            {
-                if (listing?.Item == null) continue;
-                if (listing.Item.ID == Constants.StorageRacks.SMALL ||
-                    listing.Item.ID == Constants.StorageRacks.MEDIUM ||
-                    listing.Item.ID == Constants.StorageRacks.LARGE)
-                    return true;
-            }
-            return false;
-        }
-
-        private static bool ShopHasItem(ShopInterface shop, string itemId)
-        {
-            foreach (var listing in shop.Listings)
-            {
-                if (listing.Item?.ID == itemId) return true;
-            }
-            return false;
-        }
-
-        private static void CreateListingUI(ShopInterface shop, ShopListing listing)
-        {
-            if (shop.ListingUIPrefab == null || shop.ListingContainer == null) return;
-
-            var uiObject = UnityEngine.Object.Instantiate(shop.ListingUIPrefab.gameObject, shop.ListingContainer);
-            var listingUI = uiObject.GetComponent<ListingUI>();
-            if (listingUI == null) return;
-
-            listingUI.Initialize(listing);
-
-#if IL2CPP
-            listingUI.onClicked = (Il2CppSystem.Action)(() => shop.ListingClicked(listingUI));
-            listingUI.onDropdownClicked = (Il2CppSystem.Action)(() => shop.DropdownClicked(listingUI));
-            listingUI.hoverStart = (Il2CppSystem.Action)(() => shop.EntryHovered(listingUI));
-            listingUI.hoverEnd = (Il2CppSystem.Action)(() => shop.EntryUnhovered());
-#else
-            var listingClickedMethod = typeof(ShopInterface).GetMethod("ListingClicked", BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance);
-            var dropdownClickedMethod = typeof(ShopInterface).GetMethod("DropdownClicked", BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance);
-            var entryHoveredMethod = typeof(ShopInterface).GetMethod("EntryHovered", BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance);
-            var entryUnhoveredMethod = typeof(ShopInterface).GetMethod("EntryUnhovered", BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance);
-
-            if (listingClickedMethod != null)
-                listingUI.onClicked = (Action)Delegate.Combine(listingUI.onClicked, (Action)(() => listingClickedMethod.Invoke(shop, new object[] { listingUI })));
-            if (dropdownClickedMethod != null)
-                listingUI.onDropdownClicked = (Action)Delegate.Combine(listingUI.onDropdownClicked, (Action)(() => dropdownClickedMethod.Invoke(shop, new object[] { listingUI })));
-            if (entryHoveredMethod != null)
-                listingUI.hoverStart = (Action)Delegate.Combine(listingUI.hoverStart, (Action)(() => entryHoveredMethod.Invoke(shop, new object[] { listingUI })));
-            if (entryUnhoveredMethod != null)
-                listingUI.hoverEnd = (Action)Delegate.Combine(listingUI.hoverEnd, (Action)(() => entryUnhoveredMethod.Invoke(shop, null)));
-#endif
-
-            var listingUIField = typeof(ShopInterface).GetField("listingUI", BindingFlags.NonPublic | BindingFlags.Instance);
-            var listingUIList = listingUIField?.GetValue(shop) as List<ListingUI>;
-            listingUIList?.Add(listingUI);
-        }
-
-        public static void MetallizeMaterials(GameObject obj)
-        {
-            if (obj == null) return;
-
-            foreach (var renderer in obj.GetComponentsInChildren<Renderer>(true))
-            {
-                if (renderer == null) continue;
-
-                var materials = renderer.materials;
-                bool changed = false;
-
-                for (int i = 0; i < materials.Length; i++)
-                {
-                    var mat = materials[i];
-                    if (mat == null || !mat.name.ToLower().Contains("brownwood")) continue;
-
-                    var newMat = new Material(mat) { name = mat.name + "_metal" };
-
-                    var shader = mat.shader;
-                    for (int p = 0; p < shader.GetPropertyCount(); p++)
-                    {
-                        if (shader.GetPropertyType(p) == ShaderPropertyType.Texture)
-                            newMat.SetTexture(shader.GetPropertyName(p), null);
-                    }
-                    newMat.mainTexture = null;
-
-                    if (newMat.HasProperty("_BaseColor")) newMat.SetColor("_BaseColor", MetalColor);
-                    if (newMat.HasProperty("_Color")) newMat.SetColor("_Color", MetalColor);
-                    if (newMat.HasProperty("_Metallic")) newMat.SetFloat("_Metallic", 0.8f);
-                    if (newMat.HasProperty("_Smoothness")) newMat.SetFloat("_Smoothness", 0.5f);
-                    if (newMat.HasProperty("_Glossiness")) newMat.SetFloat("_Glossiness", 0.5f);
-
-                    materials[i] = newMat;
-                    changed = true;
+                    MelonLogger.Warning($"Could not find item definition for '{itemId}'");
+                    continue;
                 }
 
-                if (changed) renderer.materials = materials;
+                // S1API automatically finds shops that sell the same category and adds the item with UI
+                int addedCount = ShopManager.AddToCompatibleShops(item);
+                totalAdded += addedCount;
+            }
+
+            MelonLogger.Msg($"Added metal storage racks to {totalAdded} shop listing(s)");
+        }
+
+        /// <summary>
+        /// BuildEvents handler for customizing placed items.
+        /// Handles material customization only.
+        /// Replaces CreateGridItem/CreateSurfaceItem/InitializeBuildableItem Harmony patches.
+        /// </summary>
+        private static void OnItemBuilt(BuildEventArgs args)
+        {
+            // Only process our metal items
+            if (args == null || !MetalItemIds.Contains(args.ItemId))
+                return;
+
+            // Use S1API MaterialHelper to customize appearance
+            MaterialHelper.ReplaceMaterials(
+                args.GameObject,
+                mat => mat.name.ToLower().Contains("brownwood"),
+                mat =>
+                {
+                    // Remove all textures and apply metallic properties
+                    MaterialHelper.RemoveAllTextures(mat);
+                    MaterialHelper.SetColor(mat, "_BaseColor", MetalColor);
+                    MaterialHelper.SetColor(mat, "_Color", MetalColor);
+                    MaterialHelper.SetFloat(mat, "_Metallic", 0.8f);
+                    MaterialHelper.SetFloat(mat, "_Smoothness", 0.5f);
+                    MaterialHelper.SetFloat(mat, "_Glossiness", 0.5f);
+                }
+            );
+        }
+
+        /// <summary>
+        /// StorageEvents handler for expanding slots when storage is placed.
+        /// Replaces PlaceableStorageEntity_Start_Postfix Harmony patch.
+        /// </summary>
+        private static void OnStorageCreated(StorageEventArgs args)
+        {
+            // Only process our metal items
+            if (args?.Storage == null || !MetalItemIds.Contains(args.ItemId))
+                return;
+
+            int extraSlots = Core.GetExtraSlots(args.ItemId);
+            if (extraSlots <= 0)
+                return;
+
+            // Use S1API to safely add slots (handles runtime differences internally)
+            bool success = args.Storage.AddSlots(extraSlots);
+
+            if (success)
+            {
+                MelonLogger.Msg($"Expanded {args.ItemId} storage to {args.Storage.SlotCount} slots");
+            }
+            else
+            {
+                MelonLogger.Warning($"Failed to expand {args.ItemId} storage");
+            }
+        }
+
+        /// <summary>
+        /// StorageEvents handler for expanding slots when loading from save.
+        /// Replaces ItemSet_LoadTo_Prefix Harmony patch.
+        /// </summary>
+        private static void OnStorageLoading(StorageLoadingEventArgs args)
+        {
+            // Only process our metal items
+            if (args?.Storage == null || !MetalItemIds.Contains(args.ItemId))
+                return;
+
+            if (!args.NeedsMoreSlots)
+                return; // Save file has fewer items than current slots
+
+            // Expand to fit saved items
+            bool success = args.Storage.AddSlots(args.AdditionalSlotsNeeded);
+
+            if (success)
+            {
+                MelonLogger.Msg($"Expanded {args.ItemId} storage to {args.Storage.SlotCount} slots for save loading");
+            }
+            else
+            {
+                MelonLogger.Warning($"Failed to expand {args.ItemId} storage for save loading");
             }
         }
     }
