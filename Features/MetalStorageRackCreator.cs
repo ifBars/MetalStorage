@@ -1,7 +1,7 @@
 using MelonLoader;
 using MetalStorage.Utils;
 using S1API.Building;
-using S1API.Internal.Utils;
+using S1API.Utils;
 using S1API.Items;
 using S1API.Rendering;
 using S1API.Shops;
@@ -25,7 +25,6 @@ namespace MetalStorage.Features
             { Constants.ItemIds.LARGE, 8 }
         };
         private static bool _eventsRegistered;
-        private static readonly HashSet<int> _expandedStorages = new HashSet<int>();
 
         public static void CreateAllMetalRacks()
         {
@@ -87,7 +86,6 @@ namespace MetalStorage.Features
                     .WithIcon(icon)
                     .WithPricing(price, 0.5f)
                     .WithBuildSound(BuildSoundType.Metal)
-                    .WithLabelColor(Color.white)
                     .Build();
 
                 MetalItemIds.Add(newId);
@@ -111,28 +109,15 @@ namespace MetalStorage.Features
             if (storage == null || string.IsNullOrEmpty(itemId))
                 return;
 
-            // Prevent double expansion - track by instance ID
-            int instanceId = storage.GetInstanceID();
-            if (_expandedStorages.Contains(instanceId))
-                return;
-
             int target = GetTargetSlotCount(itemId, minimumSlots);
             int current = storage.SlotCount;
             int missing = target - current;
 
             if (missing <= 0)
-            {
-                // Already at or above target, mark as processed
-                _expandedStorages.Add(instanceId);
                 return;
-            }
 
             bool success = storage.AddSlots(missing);
-            if (success)
-            {
-                _expandedStorages.Add(instanceId);
-            }
-            else
+            if (!success)
             {
                 MelonLogger.Warning($"Failed to expand storage '{itemId}' to {target} slots (current {current})");
             }
@@ -145,7 +130,7 @@ namespace MetalStorage.Features
             // Use S1API ShopManager to automatically add items to compatible shops
             foreach (string itemId in MetalItemIds)
             {
-                var item = ItemManager.GetItemDefinition(itemId);
+                var item = ItemManager.GetDefinition(itemId);
                 if (item == null)
                 {
                     MelonLogger.Warning($"Could not find item definition for '{itemId}'");
